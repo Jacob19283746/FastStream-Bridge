@@ -8,8 +8,7 @@ services:
       rabbitmq:
         condition: service_healthy
     environment:
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
-      RABBITMQ_QUEUE: fastapi_queue_bridge
+      RABBIT_MQ_URL: amqp://guest:guest@rabbitmq:5672/
     restart: unless-stopped
 
   rabbitmq:

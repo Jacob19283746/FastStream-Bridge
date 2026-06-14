@@ -3,9 +3,9 @@ from faststream.rabbit import RabbitQueue
 from faststream.rabbit.fastapi import RabbitRouter
 
 from app.normalise_params import normalize_query_params
-from app.settings import RABBIT_MQ_QUEUE
+from app.settings import RABBIT_MQ_QUEUE, RABBIT_MQ_URL
 
-router = RabbitRouter()
+router = RabbitRouter(url=RABBIT_MQ_URL)
 
 EXAMPLE_QUERY_PARAMS = [
     {
@@ -37,29 +37,22 @@ EXAMPLE_QUERY_PARAMS = [
     description=f"Принимает **любые** query-параметры, нормализует и публикует в очередь RabbitMQ."
 )
 async def push_params_queue(request: Request):
-    try:
-        query_params: list = request.query_params.multi_items()
-        if not query_params:
-            raise HTTPException(
-                status_code=400,
-                detail="Необходимо передать хотя бы один параметр"
-            )
-        normalise_params: dict = await normalize_query_params(items=query_params)
-
-        await router.broker.publish(
-            message=normalise_params,
-            queue=RabbitQueue(name=RABBIT_MQ_QUEUE, durable=True)
-        )
-        return {
-            "status_code": 200,
-            "detail": normalise_params
-        }
-
-    except Exception as error:
+    normalise_params: dict = await normalize_query_params(items=request.query_params.multi_items())
+    if not normalise_params:
         raise HTTPException(
-            status_code=500,
-            detail=str(error)
+            status_code=400,
+            detail="Необходимо передать хотя бы один параметр с непустым значением."
         )
+
+    await router.broker.publish(
+        message=normalise_params,
+        queue=RabbitQueue(name=RABBIT_MQ_QUEUE, durable=True)
+    )
+    return {
+        "status_code": 200,
+        "message": "Параметр(ы) успешно добавлены в очередь RabbitMQ.",
+        "detail": normalise_params
+    }
 
 
 @router.get(
@@ -71,17 +64,16 @@ async def health_check():
         if router.broker._connection and not router.broker._connection.is_closed:
             return {
                 "status_code": 200,
-                "detail": "Successful connection to RabbitMQ",
-                "connection_status": "connected"
+                "detail": "Успешное подключение к RabbitMQ."
             }
         else:
-            return {
-                "status_code": 503,
-                "detail": "RabbitMQ is not connected",
-                "connection_status": "disconnected"
-            }
+            raise HTTPException(
+                status_code=503,
+                detail="RabbitMQ не доступен, проверьте настройки."
+            )
+
     except Exception as error:
         raise HTTPException(
             status_code=500,
-            detail=str(error)
+            detail=f"Необработанное исключение: {error}"
         )
